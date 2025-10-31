@@ -1,6 +1,10 @@
 function parseJSONParameter(value, paramName) {
-    if (value === undefined) {
+    if (value === undefined || value === null || value === '') {
         return undefined;
+    }
+
+    if (typeof value === 'object') {
+        return value;
     }
 
     try {
@@ -32,6 +36,11 @@ function parseQueryParameters(req, options) {
     var where = parseJSONParameter(req.query.where, 'where') || {};
     var sort = parseJSONParameter(req.query.sort, 'sort');
     var select = parseJSONParameter(req.query.select, 'select');
+
+    if (select === undefined && req.query.filter !== undefined) {
+        select = parseJSONParameter(req.query.filter, 'filter');
+    }
+
     var skip = parseNumberParameter(req.query.skip, 'skip');
     var limit = parseNumberParameter(req.query.limit, 'limit');
     var count = false;

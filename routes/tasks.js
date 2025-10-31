@@ -3,13 +3,43 @@ var User = require('../models/user');
 var utils = require('./utils');
 
 function parseDeadline(deadline) {
-    if (!deadline) {
+    if (deadline === undefined || deadline === null || deadline === '') {
         var missing = new Error('Deadline is required');
         missing.status = 400;
         throw missing;
     }
 
-    var date = new Date(deadline);
+    var normalizedDeadline = deadline;
+
+    if (deadline instanceof Date) {
+        normalizedDeadline = deadline;
+    } else if (typeof deadline === 'string') {
+        var trimmed = deadline.trim();
+
+        if (!trimmed) {
+            var empty = new Error('Deadline is required');
+            empty.status = 400;
+            throw empty;
+        }
+
+        if (/^[+-]?\d+(\.\d+)?$/.test(trimmed)) {
+            normalizedDeadline = Number(trimmed);
+        } else {
+            normalizedDeadline = trimmed;
+        }
+    } else if (typeof deadline === 'number') {
+        normalizedDeadline = deadline;
+    }
+
+    if (typeof normalizedDeadline === 'number') {
+        if (!Number.isFinite(normalizedDeadline)) {
+            var nonFinite = new Error('Deadline must be a valid date');
+            nonFinite.status = 400;
+            throw nonFinite;
+        }
+    }
+
+    var date = new Date(normalizedDeadline);
     if (isNaN(date.getTime())) {
         var invalid = new Error('Deadline must be a valid date');
         invalid.status = 400;
@@ -248,3 +278,5 @@ module.exports = function (router) {
 
     return router;
 };
+
+module.exports.parseDeadline = parseDeadline;
