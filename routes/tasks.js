@@ -3,13 +3,38 @@ var User = require('../models/user');
 var utils = require('./utils');
 
 function parseDeadline(deadline) {
-    if (!deadline) {
+    if (deadline === undefined || deadline === null || deadline === '') {
         var missing = new Error('Deadline is required');
         missing.status = 400;
         throw missing;
     }
 
-    var date = new Date(deadline);
+    var normalizedDeadline = deadline;
+
+    if (typeof deadline === 'string') {
+        var trimmed = deadline.trim();
+
+        if (!trimmed) {
+            var empty = new Error('Deadline is required');
+            empty.status = 400;
+            throw empty;
+        }
+
+        var numericValue = Number(trimmed);
+        if (!Number.isNaN(numericValue)) {
+            normalizedDeadline = numericValue;
+        } else {
+            normalizedDeadline = trimmed;
+        }
+    }
+
+    if (typeof normalizedDeadline === 'number' && !isFinite(normalizedDeadline)) {
+        var nonFinite = new Error('Deadline must be a valid date');
+        nonFinite.status = 400;
+        throw nonFinite;
+    }
+
+    var date = new Date(normalizedDeadline);
     if (isNaN(date.getTime())) {
         var invalid = new Error('Deadline must be a valid date');
         invalid.status = 400;
