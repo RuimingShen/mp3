@@ -20,8 +20,9 @@ function parseDeadline(deadline) {
             throw empty;
         }
 
-        if (/^-?\d+$/.test(trimmed)) {
-            normalizedDeadline = Number(trimmed);
+        var numericValue = Number(trimmed);
+        if (!Number.isNaN(numericValue)) {
+            normalizedDeadline = numericValue;
         } else {
             normalizedDeadline = trimmed;
         }
