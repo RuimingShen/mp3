@@ -11,7 +11,9 @@ function parseDeadline(deadline) {
 
     var normalizedDeadline = deadline;
 
-    if (typeof deadline === 'string') {
+    if (deadline instanceof Date) {
+        normalizedDeadline = deadline;
+    } else if (typeof deadline === 'string') {
         var trimmed = deadline.trim();
 
         if (!trimmed) {
@@ -20,18 +22,21 @@ function parseDeadline(deadline) {
             throw empty;
         }
 
-        var numericValue = Number(trimmed);
-        if (!Number.isNaN(numericValue)) {
-            normalizedDeadline = numericValue;
+        if (/^[+-]?\d+(\.\d+)?$/.test(trimmed)) {
+            normalizedDeadline = Number(trimmed);
         } else {
             normalizedDeadline = trimmed;
         }
+    } else if (typeof deadline === 'number') {
+        normalizedDeadline = deadline;
     }
 
-    if (typeof normalizedDeadline === 'number' && !isFinite(normalizedDeadline)) {
-        var nonFinite = new Error('Deadline must be a valid date');
-        nonFinite.status = 400;
-        throw nonFinite;
+    if (typeof normalizedDeadline === 'number') {
+        if (!Number.isFinite(normalizedDeadline)) {
+            var nonFinite = new Error('Deadline must be a valid date');
+            nonFinite.status = 400;
+            throw nonFinite;
+        }
     }
 
     var date = new Date(normalizedDeadline);
@@ -273,3 +278,5 @@ module.exports = function (router) {
 
     return router;
 };
+
+module.exports.parseDeadline = parseDeadline;
