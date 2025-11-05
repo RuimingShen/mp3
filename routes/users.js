@@ -2,6 +2,37 @@ var User = require('../models/user');
 var Task = require('../models/task');
 var utils = require('./utils');
 
+function normalizePendingTasks(pendingTasks) {
+    if (pendingTasks === undefined || pendingTasks === null) {
+        return [];
+    }
+
+    if (!Array.isArray(pendingTasks)) {
+        var typeError = new Error('Pending tasks must be an array of task identifiers');
+        typeError.status = 400;
+        throw typeError;
+    }
+
+    var normalized = pendingTasks.map(function (taskId) {
+        if (taskId === null || taskId === undefined) {
+            return '';
+        }
+        return String(taskId).trim();
+    });
+
+    var invalidTaskId = normalized.find(function (taskId) {
+        return taskId === '';
+    });
+
+    if (invalidTaskId !== undefined) {
+        var emptyError = new Error('Pending tasks must only contain valid task identifiers');
+        emptyError.status = 400;
+        throw emptyError;
+    }
+
+    return Array.from(new Set(normalized));
+}
+
 async function validatePendingTasks(pendingTaskIds, currentUserId) {
     if (!pendingTaskIds.length) {
         return [];
@@ -12,6 +43,8 @@ async function validatePendingTasks(pendingTaskIds, currentUserId) {
         tasks = await Task.find({ _id: { $in: pendingTaskIds } });
     } catch (err) {
         if (err.name === 'CastError') {
+            err.status = 400;
+            err.message = 'Invalid task identifier';
             err.status = 404;
             err.message = 'Task not found';
         }
@@ -41,6 +74,7 @@ async function validatePendingTasks(pendingTaskIds, currentUserId) {
 
     if (conflictingTask) {
         var conflictError = new Error('Task is already assigned to another user');
+        conflictError.status = 400;
         conflictError.status = 409;
         throw conflictError;
     }
@@ -92,6 +126,15 @@ module.exports = function (router) {
                 nameError.status = 400;
                 throw nameError;
             }
+
+            if (typeof email !== 'string' || !email.trim()) {
+                var emailError = new Error('Email is required');
+                emailError.status = 400;
+                throw emailError;
+            }
+
+            var trimmedName = name.trim();
+            var trimmedEmail = email.trim();
 
             await validatePendingTasks(pendingTasks, null);
 
@@ -159,6 +202,8 @@ module.exports = function (router) {
             res.status(200).json({ message: 'OK', data: user });
         } catch (err) {
             if (err.name === 'CastError') {
+                err.status = 404;
+                err.message = 'User not found';
                 if (err.message === 'Task not found') {
                     err.status = 404;
                 } else {
@@ -177,6 +222,8 @@ module.exports = function (router) {
                 user = await User.findById(req.params.id);
             } catch (lookupErr) {
                 if (lookupErr.name === 'CastError') {
+                    lookupErr.status = 404;
+                    lookupErr.message = 'User not found';
                     lookupErr.status = 400;
                     lookupErr.message = 'Invalid user identifier';
                 }
@@ -222,6 +269,8 @@ module.exports = function (router) {
                 return pendingTasks.indexOf(taskId) === -1;
             });
 
+            user.name = trimmedName;
+            user.email = trimmedEmail;
             if (toUnassign.length) {
                 await Task.updateMany({
                     _id: { $in: toUnassign }
@@ -247,6 +296,17 @@ module.exports = function (router) {
                 throw saveErr;
             }
 
+            if (toUnassign.length) {
+                await Task.updateMany({
+                    _id: { $in: toUnassign }
+                }, {
+                    $set: {
+                        assignedUser: '',
+                        assignedUserName: 'unassigned'
+                    }
+                });
+            }
+
             if (pendingTasks.length) {
                 await Task.updateMany({
                     _id: { $in: pendingTasks }
@@ -269,6 +329,12 @@ module.exports = function (router) {
             res.status(200).json({ message: 'User updated', data: user });
         } catch (err) {
             if (err.name === 'CastError') {
+                if (err.message === 'Invalid task identifier') {
+                    err.status = err.status || 400;
+                } else {
+                    err.status = 404;
+                    err.message = 'User not found';
+                }
                 err.status = 404;
                 err.message = 'User not found';
             }
