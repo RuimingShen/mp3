@@ -2,37 +2,6 @@ var User = require('../models/user');
 var Task = require('../models/task');
 var utils = require('./utils');
 
-function normalizePendingTasks(pendingTasks) {
-    if (pendingTasks === undefined || pendingTasks === null) {
-        return [];
-    }
-
-    if (!Array.isArray(pendingTasks)) {
-        var typeError = new Error('Pending tasks must be an array of task identifiers');
-        typeError.status = 400;
-        throw typeError;
-    }
-
-    var normalized = pendingTasks.map(function (taskId) {
-        if (taskId === null || taskId === undefined) {
-            return '';
-        }
-        return String(taskId).trim();
-    });
-
-    var invalidTaskId = normalized.find(function (taskId) {
-        return taskId === '';
-    });
-
-    if (invalidTaskId !== undefined) {
-        var emptyError = new Error('Pending tasks must only contain valid task identifiers');
-        emptyError.status = 400;
-        throw emptyError;
-    }
-
-    return Array.from(new Set(normalized));
-}
-
 async function validatePendingTasks(pendingTaskIds, currentUserId) {
     if (!pendingTaskIds.length) {
         return [];
@@ -43,8 +12,8 @@ async function validatePendingTasks(pendingTaskIds, currentUserId) {
         tasks = await Task.find({ _id: { $in: pendingTaskIds } });
     } catch (err) {
         if (err.name === 'CastError') {
-            err.status = 400;
-            err.message = 'Invalid task identifier';
+            err.status = 404;
+            err.message = 'Task not found';
         }
         throw err;
     }
@@ -72,7 +41,7 @@ async function validatePendingTasks(pendingTaskIds, currentUserId) {
 
     if (conflictingTask) {
         var conflictError = new Error('Task is already assigned to another user');
-        conflictError.status = 400;
+        conflictError.status = 409;
         throw conflictError;
     }
 
@@ -124,15 +93,6 @@ module.exports = function (router) {
                 throw nameError;
             }
 
-            if (typeof email !== 'string' || !email.trim()) {
-                var emailError = new Error('Email is required');
-                emailError.status = 400;
-                throw emailError;
-            }
-
-            var trimmedName = name.trim();
-            var trimmedEmail = email.trim();
-
             await validatePendingTasks(pendingTasks, null);
 
             var user = new User({
@@ -173,8 +133,8 @@ module.exports = function (router) {
             res.status(201).json({ message: 'User created', data: user });
         } catch (err) {
             if (err.name === 'CastError') {
-                err.status = 400;
-                err.message = 'Invalid task identifier';
+                err.status = 404;
+                err.message = 'Task not found';
             }
             utils.handleError(res, err);
         }
@@ -199,8 +159,12 @@ module.exports = function (router) {
             res.status(200).json({ message: 'OK', data: user });
         } catch (err) {
             if (err.name === 'CastError') {
-                err.status = 400;
-                err.message = 'Invalid user identifier';
+                if (err.message === 'Task not found') {
+                    err.status = 404;
+                } else {
+                    err.status = 404;
+                    err.message = 'User not found';
+                }
             }
             utils.handleError(res, err);
         }
@@ -269,8 +233,8 @@ module.exports = function (router) {
                 });
             }
 
-            user.name = trimmedName;
-            user.email = trimmedEmail;
+            user.name = name;
+            user.email = email;
             user.pendingTasks = pendingTasks;
 
             try {
@@ -305,8 +269,8 @@ module.exports = function (router) {
             res.status(200).json({ message: 'User updated', data: user });
         } catch (err) {
             if (err.name === 'CastError') {
-                err.status = 400;
-                err.message = 'Invalid user identifier';
+                err.status = 404;
+                err.message = 'User not found';
             }
             utils.handleError(res, err);
         }
@@ -345,8 +309,8 @@ module.exports = function (router) {
             res.status(200).json({ message: 'User deleted', data: [] });
         } catch (err) {
             if (err.name === 'CastError') {
-                err.status = 400;
-                err.message = 'Invalid user identifier';
+                err.status = 404;
+                err.message = 'User not found';
             }
             utils.handleError(res, err);
         }
