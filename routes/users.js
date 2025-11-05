@@ -18,8 +18,8 @@ async function validatePendingTasks(pendingTaskIds, currentUserId) {
         throw err;
     }
     if (tasks.length !== pendingTaskIds.length) {
-        var error = new Error('One or more pending tasks do not exist');
-        error.status = 400;
+        var error = new Error('One or more pending tasks were not found');
+        error.status = 404;
         throw error;
     }
 
@@ -85,19 +85,19 @@ module.exports = function (router) {
         try {
             var name = req.body.name;
             var email = req.body.email;
-            var pendingTasks = Array.isArray(req.body.pendingTasks) ? Array.from(new Set(req.body.pendingTasks.map(String))) : [];
+            var pendingTasks = normalizePendingTasks(req.body.pendingTasks);
 
-            if (!name || !email) {
-                var missingError = new Error('Name and email are required');
-                missingError.status = 400;
-                throw missingError;
+            if (typeof name !== 'string' || !name.trim()) {
+                var nameError = new Error('Name is required');
+                nameError.status = 400;
+                throw nameError;
             }
 
             await validatePendingTasks(pendingTasks, null);
 
             var user = new User({
-                name: name,
-                email: email,
+                name: trimmedName,
+                email: trimmedEmail,
                 pendingTasks: pendingTasks
             });
 
@@ -117,7 +117,7 @@ module.exports = function (router) {
                 }, {
                     $set: {
                         assignedUser: user._id.toString(),
-                        assignedUserName: user.name
+                        assignedUserName: trimmedName
                     }
                 });
             }
@@ -126,7 +126,7 @@ module.exports = function (router) {
                 assignedUser: user._id.toString()
             }, {
                 $set: {
-                    assignedUserName: user.name
+                    assignedUserName: trimmedName
                 }
             });
 
@@ -172,7 +172,16 @@ module.exports = function (router) {
 
     userRoute.put(async function (req, res) {
         try {
-            var user = await User.findById(req.params.id);
+            var user;
+            try {
+                user = await User.findById(req.params.id);
+            } catch (lookupErr) {
+                if (lookupErr.name === 'CastError') {
+                    lookupErr.status = 400;
+                    lookupErr.message = 'Invalid user identifier';
+                }
+                throw lookupErr;
+            }
 
             if (!user) {
                 return res.status(404).json({ message: 'User not found', data: [] });
@@ -180,16 +189,25 @@ module.exports = function (router) {
 
             var name = req.body.name;
             var email = req.body.email;
-            var pendingTasks = Array.isArray(req.body.pendingTasks) ? Array.from(new Set(req.body.pendingTasks.map(String))) : [];
+            var pendingTasks = normalizePendingTasks(req.body.pendingTasks);
 
-            if (!name || !email) {
-                var missingError = new Error('Name and email are required');
-                missingError.status = 400;
-                throw missingError;
+            if (typeof name !== 'string' || !name.trim()) {
+                var missingName = new Error('Name is required');
+                missingName.status = 400;
+                throw missingName;
             }
 
-            if (email !== user.email) {
-                var existing = await User.findOne({ email: email, _id: { $ne: user._id } });
+            if (typeof email !== 'string' || !email.trim()) {
+                var missingEmail = new Error('Email is required');
+                missingEmail.status = 400;
+                throw missingEmail;
+            }
+
+            var trimmedName = name.trim();
+            var trimmedEmail = email.trim();
+
+            if (trimmedEmail !== user.email) {
+                var existing = await User.findOne({ email: trimmedEmail, _id: { $ne: user._id } });
                 if (existing) {
                     var duplicateError = new Error('Email already exists');
                     duplicateError.status = 400;
@@ -235,7 +253,7 @@ module.exports = function (router) {
                 }, {
                     $set: {
                         assignedUser: user._id.toString(),
-                        assignedUserName: user.name
+                        assignedUserName: trimmedName
                     }
                 });
             }
@@ -244,7 +262,7 @@ module.exports = function (router) {
                 assignedUser: user._id.toString()
             }, {
                 $set: {
-                    assignedUserName: user.name
+                    assignedUserName: trimmedName
                 }
             });
 
