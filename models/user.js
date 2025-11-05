@@ -24,6 +24,23 @@ var UserSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     }
+}, {
+    versionKey: false,
+    id: false
+});
+
+UserSchema.set('toJSON', {
+    transform: function (doc, ret) {
+        delete ret._id;
+        return ret;
+    }
+});
+
+UserSchema.set('toObject', {
+    transform: function (doc, ret) {
+        delete ret._id;
+        return ret;
+    }
 });
 
 // Export the Mongoose model

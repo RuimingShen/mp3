@@ -2,15 +2,55 @@ var User = require('../models/user');
 var Task = require('../models/task');
 var utils = require('./utils');
 
-async function validatePendingTasks(pendingTaskIds) {
+function normalizePendingTasks(pendingTasks) {
+    if (pendingTasks === undefined || pendingTasks === null) {
+        return [];
+    }
+
+    if (!Array.isArray(pendingTasks)) {
+        var typeError = new Error('Pending tasks must be an array of task identifiers');
+        typeError.status = 400;
+        throw typeError;
+    }
+
+    var normalized = pendingTasks.map(function (taskId) {
+        if (taskId === null || taskId === undefined) {
+            return '';
+        }
+        return String(taskId).trim();
+    });
+
+    var invalidTaskId = normalized.find(function (taskId) {
+        return taskId === '';
+    });
+
+    if (invalidTaskId !== undefined) {
+        var emptyError = new Error('Pending tasks must only contain valid task identifiers');
+        emptyError.status = 400;
+        throw emptyError;
+    }
+
+    return Array.from(new Set(normalized));
+}
+
+async function validatePendingTasks(pendingTaskIds, currentUserId) {
     if (!pendingTaskIds.length) {
         return [];
     }
 
-    var tasks = await Task.find({ _id: { $in: pendingTaskIds } });
+    var tasks;
+    try {
+        tasks = await Task.find({ _id: { $in: pendingTaskIds } });
+    } catch (err) {
+        if (err.name === 'CastError') {
+            err.status = 400;
+            err.message = 'Invalid task identifier';
+        }
+        throw err;
+    }
     if (tasks.length !== pendingTaskIds.length) {
-        var error = new Error('One or more pending tasks do not exist');
-        error.status = 400;
+        var error = new Error('One or more pending tasks were not found');
+        error.status = 404;
         throw error;
     }
 
@@ -24,18 +64,19 @@ async function validatePendingTasks(pendingTaskIds) {
         throw completedError;
     }
 
-    return tasks;
-}
+    var currentUserIdString = currentUserId ? String(currentUserId) : null;
 
-async function removeTasksFromUsers(tasks, currentUserId) {
-    for (var i = 0; i < tasks.length; i++) {
-        var task = tasks[i];
-        if (task.assignedUser && task.assignedUser !== String(currentUserId)) {
-            await User.findByIdAndUpdate(task.assignedUser, {
-                $pull: { pendingTasks: task._id.toString() }
-            });
-        }
+    var conflictingTask = tasks.find(function (task) {
+        return task.assignedUser && task.assignedUser !== '' && task.assignedUser !== currentUserIdString;
+    });
+
+    if (conflictingTask) {
+        var conflictError = new Error('Task is already assigned to another user');
+        conflictError.status = 400;
+        throw conflictError;
     }
+
+    return tasks;
 }
 
 module.exports = function (router) {
@@ -75,19 +116,28 @@ module.exports = function (router) {
         try {
             var name = req.body.name;
             var email = req.body.email;
-            var pendingTasks = Array.isArray(req.body.pendingTasks) ? Array.from(new Set(req.body.pendingTasks.map(String))) : [];
+            var pendingTasks = normalizePendingTasks(req.body.pendingTasks);
 
-            if (!name || !email) {
-                var missingError = new Error('Name and email are required');
-                missingError.status = 400;
-                throw missingError;
+            if (typeof name !== 'string' || !name.trim()) {
+                var nameError = new Error('Name is required');
+                nameError.status = 400;
+                throw nameError;
             }
 
-            var tasks = await validatePendingTasks(pendingTasks);
+            if (typeof email !== 'string' || !email.trim()) {
+                var emailError = new Error('Email is required');
+                emailError.status = 400;
+                throw emailError;
+            }
+
+            var trimmedName = name.trim();
+            var trimmedEmail = email.trim();
+
+            await validatePendingTasks(pendingTasks, null);
 
             var user = new User({
-                name: name,
-                email: email,
+                name: trimmedName,
+                email: trimmedEmail,
                 pendingTasks: pendingTasks
             });
 
@@ -101,15 +151,13 @@ module.exports = function (router) {
                 throw saveErr;
             }
 
-            await removeTasksFromUsers(tasks, user._id);
-
             if (pendingTasks.length) {
                 await Task.updateMany({
                     _id: { $in: pendingTasks }
                 }, {
                     $set: {
                         assignedUser: user._id.toString(),
-                        assignedUserName: user.name
+                        assignedUserName: trimmedName
                     }
                 });
             }
@@ -118,7 +166,7 @@ module.exports = function (router) {
                 assignedUser: user._id.toString()
             }, {
                 $set: {
-                    assignedUserName: user.name
+                    assignedUserName: trimmedName
                 }
             });
 
@@ -151,8 +199,8 @@ module.exports = function (router) {
             res.status(200).json({ message: 'OK', data: user });
         } catch (err) {
             if (err.name === 'CastError') {
-                err.status = 400;
-                err.message = 'Invalid user identifier';
+                err.status = 404;
+                err.message = 'User not found';
             }
             utils.handleError(res, err);
         }
@@ -160,7 +208,16 @@ module.exports = function (router) {
 
     userRoute.put(async function (req, res) {
         try {
-            var user = await User.findById(req.params.id);
+            var user;
+            try {
+                user = await User.findById(req.params.id);
+            } catch (lookupErr) {
+                if (lookupErr.name === 'CastError') {
+                    lookupErr.status = 404;
+                    lookupErr.message = 'User not found';
+                }
+                throw lookupErr;
+            }
 
             if (!user) {
                 return res.status(404).json({ message: 'User not found', data: [] });
@@ -168,16 +225,25 @@ module.exports = function (router) {
 
             var name = req.body.name;
             var email = req.body.email;
-            var pendingTasks = Array.isArray(req.body.pendingTasks) ? Array.from(new Set(req.body.pendingTasks.map(String))) : [];
+            var pendingTasks = normalizePendingTasks(req.body.pendingTasks);
 
-            if (!name || !email) {
-                var missingError = new Error('Name and email are required');
-                missingError.status = 400;
-                throw missingError;
+            if (typeof name !== 'string' || !name.trim()) {
+                var missingName = new Error('Name is required');
+                missingName.status = 400;
+                throw missingName;
             }
 
-            if (email !== user.email) {
-                var existing = await User.findOne({ email: email, _id: { $ne: user._id } });
+            if (typeof email !== 'string' || !email.trim()) {
+                var missingEmail = new Error('Email is required');
+                missingEmail.status = 400;
+                throw missingEmail;
+            }
+
+            var trimmedName = name.trim();
+            var trimmedEmail = email.trim();
+
+            if (trimmedEmail !== user.email) {
+                var existing = await User.findOne({ email: trimmedEmail, _id: { $ne: user._id } });
                 if (existing) {
                     var duplicateError = new Error('Email already exists');
                     duplicateError.status = 400;
@@ -185,28 +251,15 @@ module.exports = function (router) {
                 }
             }
 
-            var tasks = await validatePendingTasks(pendingTasks);
+            await validatePendingTasks(pendingTasks, user._id);
 
             var oldPending = (user.pendingTasks || []).map(String);
             var toUnassign = oldPending.filter(function (taskId) {
                 return pendingTasks.indexOf(taskId) === -1;
             });
 
-            if (toUnassign.length) {
-                await Task.updateMany({
-                    _id: { $in: toUnassign }
-                }, {
-                    $set: {
-                        assignedUser: '',
-                        assignedUserName: 'unassigned'
-                    }
-                });
-            }
-
-            await removeTasksFromUsers(tasks, user._id);
-
-            user.name = name;
-            user.email = email;
+            user.name = trimmedName;
+            user.email = trimmedEmail;
             user.pendingTasks = pendingTasks;
 
             try {
@@ -219,13 +272,24 @@ module.exports = function (router) {
                 throw saveErr;
             }
 
+            if (toUnassign.length) {
+                await Task.updateMany({
+                    _id: { $in: toUnassign }
+                }, {
+                    $set: {
+                        assignedUser: '',
+                        assignedUserName: 'unassigned'
+                    }
+                });
+            }
+
             if (pendingTasks.length) {
                 await Task.updateMany({
                     _id: { $in: pendingTasks }
                 }, {
                     $set: {
                         assignedUser: user._id.toString(),
-                        assignedUserName: user.name
+                        assignedUserName: trimmedName
                     }
                 });
             }
@@ -234,15 +298,19 @@ module.exports = function (router) {
                 assignedUser: user._id.toString()
             }, {
                 $set: {
-                    assignedUserName: user.name
+                    assignedUserName: trimmedName
                 }
             });
 
             res.status(200).json({ message: 'User updated', data: user });
         } catch (err) {
             if (err.name === 'CastError') {
-                err.status = 400;
-                err.message = 'Invalid identifier';
+                if (err.message === 'Invalid task identifier') {
+                    err.status = err.status || 400;
+                } else {
+                    err.status = 404;
+                    err.message = 'User not found';
+                }
             }
             utils.handleError(res, err);
         }
@@ -281,8 +349,8 @@ module.exports = function (router) {
             res.status(200).json({ message: 'User deleted', data: [] });
         } catch (err) {
             if (err.name === 'CastError') {
-                err.status = 400;
-                err.message = 'Invalid user identifier';
+                err.status = 404;
+                err.message = 'User not found';
             }
             utils.handleError(res, err);
         }

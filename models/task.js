@@ -30,6 +30,23 @@ var TaskSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     }
+}, {
+    versionKey: false,
+    id: false
+});
+
+TaskSchema.set('toJSON', {
+    transform: function (doc, ret) {
+        delete ret._id;
+        return ret;
+    }
+});
+
+TaskSchema.set('toObject', {
+    transform: function (doc, ret) {
+        delete ret._id;
+        return ret;
+    }
 });
 
 module.exports = mongoose.model('Task', TaskSchema);
