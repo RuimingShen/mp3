@@ -2,6 +2,23 @@
 var mongoose = require('mongoose');
 
 // Define our user schema
+function scrubIdentifiers(doc, ret) {
+    if (!ret) {
+        return ret;
+    }
+
+    if (ret._id !== undefined) {
+        ret.id = ret._id.toString();
+        delete ret._id;
+    }
+
+    if (ret.__v !== undefined) {
+        delete ret.__v;
+    }
+
+    return ret;
+}
+
 var UserSchema = new mongoose.Schema({
     name: {
         type: String,
@@ -24,6 +41,10 @@ var UserSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     }
+}, {
+    versionKey: false,
+    toJSON: { transform: scrubIdentifiers },
+    toObject: { transform: scrubIdentifiers }
 });
 
 // Export the Mongoose model
