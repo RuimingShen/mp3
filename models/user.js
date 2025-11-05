@@ -32,6 +32,7 @@ var UserSchema = new mongoose.Schema({
 UserSchema.set('toJSON', {
     transform: function (doc, ret) {
         delete ret._id;
+        delete ret.id;
         return ret;
     }
 });
@@ -39,6 +40,7 @@ UserSchema.set('toJSON', {
 UserSchema.set('toObject', {
     transform: function (doc, ret) {
         delete ret._id;
+        delete ret.id;
         return ret;
     }
 });

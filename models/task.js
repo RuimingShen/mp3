@@ -38,6 +38,7 @@ var TaskSchema = new mongoose.Schema({
 TaskSchema.set('toJSON', {
     transform: function (doc, ret) {
         delete ret._id;
+        delete ret.id;
         return ret;
     }
 });
@@ -45,6 +46,7 @@ TaskSchema.set('toJSON', {
 TaskSchema.set('toObject', {
     transform: function (doc, ret) {
         delete ret._id;
+        delete ret.id;
         return ret;
     }
 });
