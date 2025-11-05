@@ -162,8 +162,8 @@ module.exports = function (router) {
             res.status(201).json({ message: 'Task created', data: task });
         } catch (err) {
             if (err.name === 'CastError') {
-                err.status = 400;
-                err.message = 'Invalid user identifier';
+                err.status = 404;
+                err.message = 'User not found';
             }
             utils.handleError(res, err);
         }
@@ -188,8 +188,8 @@ module.exports = function (router) {
             res.status(200).json({ message: 'OK', data: task });
         } catch (err) {
             if (err.name === 'CastError') {
-                err.status = 400;
-                err.message = 'Invalid task identifier';
+                err.status = 404;
+                err.message = 'Task not found';
             }
             utils.handleError(res, err);
         }
@@ -243,8 +243,8 @@ module.exports = function (router) {
             res.status(200).json({ message: 'Task updated', data: task });
         } catch (err) {
             if (err.name === 'CastError') {
-                err.status = 400;
-                err.message = 'Invalid identifier';
+                err.status = 404;
+                err.message = 'Task not found';
             }
             utils.handleError(res, err);
         }
@@ -269,8 +269,8 @@ module.exports = function (router) {
             res.status(200).json({ message: 'Task deleted', data: [] });
         } catch (err) {
             if (err.name === 'CastError') {
-                err.status = 400;
-                err.message = 'Invalid task identifier';
+                err.status = 404;
+                err.message = 'Task not found';
             }
             utils.handleError(res, err);
         }
